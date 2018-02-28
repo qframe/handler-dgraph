@@ -13,7 +13,7 @@ func main() {
 	qChan.Broadcast()
 	cfgMap := map[string]string{
 		"log.level": "info",
-		"handler.dgraph.dgraph-server": "tasks.dgraph-server:9081",
+		"handler.dgraph.dgraph-server": "172.17.0.1:9081",
 	}
 	cfg := config.NewConfig([]config.Provider{config.NewStatic(cfgMap)})
 	// Create Health Cache\
