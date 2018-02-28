@@ -1,0 +1,13 @@
+workspace:
+  base: /usr/local/
+  path: src/github.com/qframe/handler-dgraph
+
+pipeline:
+  alpine:
+    image: qnib/alplain-golang
+    commands:
+      - govendor build -o dgraph_alpine
+  x86:
+      image: qnib/uplain-golang
+      commands:
+        - govendor build -o dgraph_x86

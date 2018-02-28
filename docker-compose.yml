@@ -1,0 +1,32 @@
+version: "3"
+services:
+  dgraph-zero:
+    image: qnib/plain-dgraph:v1.0.1-2
+    networks: ["dgraphnet"]
+    ports:
+      - 7080:7080
+  dgraph-server:
+    image: qnib/plain-dgraph:v1.0.1-2
+    networks: ["dgraphnet"]
+    ports:
+      - 7081:7081
+      - 8081:8081
+      - 9081:9081
+    deploy:
+      mode: replicated
+      replicas: 1
+    environment:
+      - DGRAPH_IDX={{.Task.Slot}}
+      - DGRAPH_ZERO_ADDR=tasks.dgraph-zero
+    volumes:
+      - /dgraph
+    command: "/opt/qnib/dgraph/bin/dgraph.sh server"
+  dgraph-ui:
+    image: qnib/plain-dgraph:v1.0.1-2
+    networks: ["dgraphnet"]
+    ports:
+      - 8082:8082
+    command: "/opt/qnib/dgraph/bin/dgraph.sh ratel"
+
+networks:
+  dgraphnet:
