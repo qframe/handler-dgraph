@@ -267,7 +267,7 @@
 			"revisionTime": "2018-01-20T12:07:17Z"
 		},
 		{
-			"checksumSHA1": "61M900ev4ILWiX9+aNXCvTs5M9U=",
+			"checksumSHA1": "4JFU6EfY4DwLHN676HTCcz33g0k=",
 			"path": "github.com/qframe/collector-docker-events",
 			"revision": "2fe0c644d6aec76fed298da66999f23e2357e006",
 			"revisionTime": "2017-10-07T12:42:31Z"
@@ -285,7 +285,7 @@
 			"revisionTime": "2017-12-08T09:47:13Z"
 		},
 		{
-			"checksumSHA1": "jcosGG3NvoLiO9zHRqjo+K8YCoY=",
+			"checksumSHA1": "eMkl5/YdEeC2ltQLWdxilbxjFD4=",
 			"path": "github.com/qframe/types/docker-events",
 			"revision": "de8e76eb8ae6acf719916349d8732844b8b29e34",
 			"revisionTime": "2017-12-08T09:47:13Z"

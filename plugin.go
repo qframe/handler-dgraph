@@ -18,6 +18,7 @@ import (
 	"github.com/qframe/cache-inventory"
 	"github.com/qframe/types/docker-events"
 	"github.com/docker/docker/api/types/events"
+	"reflect"
 )
 
 const (
@@ -28,6 +29,27 @@ const (
 
 var (
 	ctx = context.Background()
+	// Containers have a `name`, `id` and a `image_name`.
+	schema = map[string]string{
+		"container": `
+			id: string @index(term) .
+			name: string @index(term) .
+			image: string  @index(term) .
+		`,
+		"network": `
+			id: string @index(term) .
+			name: string @index(term) .
+			driver: string  @index(term) .
+			scope: string  @index(term) .
+		`,
+		"node": `
+			id: string @index(term) .
+			name: string @index(term) .
+			status: string  @index(term) .
+			availability: string  @index(term) .
+			manager-status: string  @index(term) .
+		`,
+	}
 )
 
 // Plugin holds a buffer and the initial information from the server
@@ -66,6 +88,7 @@ func (p *Plugin) Run() {
 	p.Log("notice", fmt.Sprintf("Start %s handler: %sv%s", pluginPkg, p.Name, version))
 	bg := p.QChan.Data.Join()
 	p.Connect()
+	p.cleanDgraph()
 	for {
 		select {
 		case val := <-bg.Read:
@@ -82,72 +105,130 @@ func (p *Plugin) Run() {
 			case qtypes_docker_events.ContainerEvent:
 				ce := val.(qtypes_docker_events.ContainerEvent)
 				p.handleContainerEvent(ce)
-	        //default:
-			//	p.Log("info", fmt.Sprintf("Dunno type '%s': %v", reflect.TypeOf(val), val))
+			case qtypes_docker_events.NetworkEvent:
+				ne := val.(qtypes_docker_events.NetworkEvent)
+				p.handleNetworkEvent(ne)
+			case qtypes_docker_events.DockerEvent:
+				de := val.(qtypes_docker_events.DockerEvent)
+				//TODO: Extract engine info
+				p.Log("info", fmt.Sprintf("Got word: connected to '%s': %v", de.Engine.Name, de.Engine.ServerVersion))
+				continue
+			default:
+				p.Log("info", fmt.Sprintf("Dunno type '%s': %v", reflect.TypeOf(val), val))
 			}
 		}
 	}
+}
+
+func (p *Plugin) handleNetworkEvent(ne qtypes_docker_events.NetworkEvent) {
+	switch ne.Event.Action {
+	case "create":
+		p.createNetwork(ne)
+	case "update":
+		p.Log("info", fmt.Sprintf("Network '%s' -> %v | Name: %s", ne.Network.ID, ne.Event.Action, ne.Network.Name))
+	case "remove":
+		p.removeObj(ne.Event)
+	}
+
 }
 
 func (p *Plugin) handleContainerEvent(ce qtypes_docker_events.ContainerEvent) {
 	switch ce.Event.Action {
 	case "exec_create", "exec_start", "exec_die":
 		return
+	case "running":
+		// Already running container
+		//TODO: check whether ContainerID is already in graph!
+		return
 	case "start":
-		if ce.Event.Actor.ID != "" {
-			p.createCntObj(ce.Event)
-		}
+		p.createObj(ce.Event)
 	default:
 		p.Log("info", fmt.Sprintf("%s -> %-20s | %s | %s", ce.Event.Type, ce.Event.Action, ce.Event.Actor.ID[:12], ce.Event.Actor.Attributes["name"]))
 	}
 
 }
 
-func (p *Plugin) createCntObj(e events.Message) (err error){
-	// Install a schema into dgraph.
-
-	// Containers have a `name`, `id` and a `image_name`.
-	schema := `
-			id: string @index(term) .
-			name: string @index(term) .
-			image: string .
-	`
-
-	p.indexDb(schema)
+func (p *Plugin) cleanDgraph() (err error) {
 	// Remove
 	err = p.cli.Alter(ctx, &api.Operation{DropAll: true})
 	if err != nil {
 		p.Log("error", err.Error())
-		return err
 	}
-	cnt := Container{
-		ID: e.Actor.ID[:12],
-		Name: e.Actor.Attributes["name"],
-		Image: e.Actor.Attributes["image"],
-	}
+	return err
+}
+
+func (p *Plugin) createContainer(cnt Container) (err error) {
 	// Insert container
 	mu := &api.Mutation{
 		CommitNow: true,
 	}
 	pb, err := json.Marshal(cnt)
 	if err != nil {
-		p.Log("error", err.Error())
 		return err
 	}
 
 	mu.SetJson = pb
 	_, err = p.cli.NewTxn().Mutate(ctx, mu)
 	if err != nil {
-		p.Log("error", err.Error())
 		return err
-    }
-	p.indexDb(schema)
+	}
 	return
-
 }
 
-func (p *Plugin) indexDb(schema string) (err error) {
-	err = p.cli.Alter(ctx, &api.Operation{Schema: schema})
+func (p *Plugin) createNetwork(ne qtypes_docker_events.NetworkEvent) (err error) {
+	mu := &api.Mutation{
+		CommitNow: true,
+	}
+	net := Network{
+		ID: ne.Network.ID,
+		Name: ne.Network.Name,
+		Scope: ne.Network.Scope,
+		Driver: ne.Network.Driver,
+	}
+	pb, err := json.Marshal(net)
+	if err != nil {
+		return err
+	}
+
+	mu.SetJson = pb
+	_, err = p.cli.NewTxn().Mutate(ctx, mu)
+	if err != nil {
+		return err
+	}
+	p.indexDb("network")
+	return
+}
+
+func (p *Plugin) removeObj(e events.Message) (err error) {
+	p.Log("info", fmt.Sprintf("%s '%s' -> %v", e.Type, e.Actor.ID, e.Action))
+	return
+}
+
+func (p *Plugin) createObj(e events.Message) (err error) {
+	// Install a schema into dgraph.
+
+	p.indexDb(e.Type)
+	switch e.Type {
+
+	case "container":
+		cnt := Container{
+			ID: e.Actor.ID[:12],
+			Name: e.Actor.Attributes["name"],
+			Image: e.Actor.Attributes["image"],
+		}
+		err = p.createContainer(cnt)
+		if err != nil {
+			return err
+		}
+	}
+
+	p.indexDb("container")
+	return
+}
+
+
+func (p *Plugin) indexDb(typ string) (err error) {
+	err = p.cli.Alter(ctx, &api.Operation{Schema: schema[typ]})
 	if err != nil {
 		p.Log("error", err.Error())
 	}
