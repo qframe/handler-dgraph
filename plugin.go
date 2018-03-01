@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	version   = "0.0.1"
+	version   = "0.0.2"
 	pluginTyp = qtypes_constants.HANDLER
 	pluginPkg = "dgraph"
 )
